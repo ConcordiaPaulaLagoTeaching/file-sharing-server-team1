@@ -1,15 +1,12 @@
 package ca.concordia.filesystem.datastructures;
 
-import java.util.LinkedList;
-
 public class FEntry {
 
-    private String filename;
+    private String filename; // Max 11 characters
     private short filesize;
-    private short firstBlock; // Pointers to data blocks
+    private short firstBlock; // -1 if no blocks allocated
 
-    public FEntry(String filename, short filesize, short firstblock) throws IllegalArgumentException{
-        //Check filename is max 11 bytes long
+    public FEntry(String filename, short filesize, short firstblock) throws IllegalArgumentException {
         if (filename.length() > 11) {
             throw new IllegalArgumentException("Filename cannot be longer than 11 characters.");
         }
@@ -18,7 +15,13 @@ public class FEntry {
         this.firstBlock = firstblock;
     }
 
-    // Getters and Setters
+    // Default constructor creates an unused entry
+    public FEntry() {
+        this.filename = "";
+        this.filesize = 0;
+        this.firstBlock = -1;
+    }
+
     public String getFilename() {
         return filename;
     }
@@ -43,5 +46,29 @@ public class FEntry {
 
     public short getFirstBlock() {
         return firstBlock;
+    }
+
+    public void setFirstBlock(short firstBlock) {
+        this.firstBlock = firstBlock;
+    }
+
+    public boolean isInUse() {
+        return filename != null && !filename.isEmpty();
+    }
+
+    public boolean hasBlocks() {
+        return firstBlock != -1;
+    }
+
+    public void clear() {
+        this.filename = "";
+        this.filesize = 0;
+        this.firstBlock = -1;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("FEntry{filename='%s', filesize=%d, firstBlock=%d, inUse=%b}",
+                filename, filesize, firstBlock, isInUse());
     }
 }
