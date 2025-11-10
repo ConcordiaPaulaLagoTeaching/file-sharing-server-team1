@@ -1,4 +1,5 @@
 package ca.concordia.server;
+
 import ca.concordia.filesystem.FileSystemManager;
 
 import java.io.BufferedReader;
@@ -11,15 +12,16 @@ public class FileServer {
 
     private FileSystemManager fsManager;
     private int port;
-    public FileServer(int port, String fileSystemName, int totalSize){
+
+    public FileServer(int port, String fileSystemName, int totalSize) {
         // Initialize the FileSystemManager
         FileSystemManager fsManager = new FileSystemManager(fileSystemName,
-                10*128 );
+                10 * 128);
         this.fsManager = fsManager;
         this.port = port;
     }
 
-    public void start(){
+    public void start() {
         try (ServerSocket serverSocket = new ServerSocket(12345)) {
             System.out.println("Server started. Listening on port 12345...");
 
@@ -27,9 +29,9 @@ public class FileServer {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Handling client: " + clientSocket);
                 try (
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                        PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)
-                ) {
+                        BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(clientSocket.getInputStream()));
+                        PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         System.out.println("Received from client: " + line);
@@ -38,11 +40,21 @@ public class FileServer {
 
                         switch (command) {
                             case "CREATE":
-                                fsManager.createFile(parts[1]);
-                                writer.println("SUCCESS: File '" + parts[1] + "' created.");
+                                try {
+                                    if (parts.length < 2) {
+                                        writer.println("ERROR: CREATE command requires a filename.");
+                                    } else {
+                                        fsManager.createFile(parts[1]);
+                                        writer.println("SUCCESS: File '" + parts[1] + "' created.");
+                                    }
+                                } catch (IllegalArgumentException | IllegalStateException e) {
+                                    writer.println(e.getMessage());
+                                } catch (Exception e) {
+                                    writer.println("ERROR: Failed to create file: " + e.getMessage());
+                                }
                                 writer.flush();
                                 break;
-                            //TODO: Implement other commands READ, WRITE, DELETE, LIST
+                            // TODO: Implement other commands READ, WRITE, DELETE, LIST
                             case "QUIT":
                                 writer.println("SUCCESS: Disconnecting.");
                                 return;

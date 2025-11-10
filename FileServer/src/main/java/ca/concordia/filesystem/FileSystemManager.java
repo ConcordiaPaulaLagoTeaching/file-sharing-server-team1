@@ -57,8 +57,57 @@ public class FileSystemManager {
     }
 
     public void createFile(String fileName) throws Exception {
-        // TODO
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        // Validate filename - check for null or empty
+        if (fileName == null || fileName.isEmpty()) {
+            throw new IllegalArgumentException("ERROR: Filename cannot be empty.");
+        }
+
+        // Validate filename length (max 11 characters)
+        if (fileName.length() > 11) {
+            throw new IllegalArgumentException("ERROR: Filename cannot exceed 11 characters.");
+        }
+
+        // Validate filename - no special characters (only alphanumeric, dots,
+        // underscores, hyphens)
+        if (!fileName.matches("^[a-zA-Z0-9._-]+$")) {
+            throw new IllegalArgumentException(
+                    "ERROR: Filename contains invalid characters. Only alphanumeric, dots, underscores, and hyphens are allowed.");
+        }
+
+        globalLock.lock();
+        try {
+            // Check if file already exists in inode table
+            for (int i = 0; i < MAXFILES; i++) {
+                if (inodeTable[i].isInUse() && inodeTable[i].getFilename().equals(fileName)) {
+                    throw new IllegalArgumentException("ERROR: File '" + fileName + "' already exists.");
+                }
+            }
+
+            // Find a free inode slot
+            int freeSlot = -1;
+            for (int i = 0; i < MAXFILES; i++) {
+                if (!inodeTable[i].isInUse()) {
+                    freeSlot = i;
+                    break;
+                }
+            }
+
+            // Check if maximum file limit reached
+            if (freeSlot == -1) {
+                throw new IllegalStateException("ERROR: Maximum file limit reached (" + MAXFILES + " files).");
+            }
+
+            // Create new FEntry with empty content (size = 0, firstBlock = -1)
+            FEntry newEntry = new FEntry(fileName, (short) 0, (short) -1);
+
+            // Update inode table with the new entry
+            inodeTable[freeSlot] = newEntry;
+
+            System.out.println("File '" + fileName + "' created successfully in inode slot " + freeSlot);
+
+        } finally {
+            globalLock.unlock();
+        }
     }
 
     // TODO: Add readFile, writeFile and other required methods,
