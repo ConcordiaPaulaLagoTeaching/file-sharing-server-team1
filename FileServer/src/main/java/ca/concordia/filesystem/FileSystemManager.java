@@ -1,12 +1,16 @@
 package ca.concordia.filesystem;
 
 import ca.concordia.filesystem.datastructures.FEntry;
+import ca.concordia.filesystem.datastructures.FNode;
 
+import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class FileSystemManager {
-
+    private static final int FENTRY_SIZE = 15;
     private final int MAXFILES = 5;
     private final int MAXBLOCKS = 10;
     private final static FileSystemManager instance = null;
@@ -17,6 +21,8 @@ public class FileSystemManager {
 
     private FEntry[] inodeTable; // Array of inodes
     private boolean[] freeBlockList; // Bitmap for free blocks
+    private FNode[] fNodeTable;
+    private int metadataBlocks;
 
     public FileSystemManager(String filename, int totalSize) {
         // Initialize the file system manager with a file
@@ -192,6 +198,134 @@ public class FileSystemManager {
             System.out.println("File '" + fileName + "' written successfully with " + contentSize + " bytes across "
                     + requiredBlocks + " block(s).");
 
+        } finally {
+            globalLock.unlock();
+        }
+    }
+    //This is the function to list the files iinside the file system
+    public String[] listFiles() {
+        globalLock.lock();
+        try {
+            List<String> fileList = new ArrayList<>();
+            for (FEntry entry : inodeTable) {
+                if (entry != null) {
+                    fileList.add(entry.getFilename());
+                }
+            }
+            return fileList.toArray(new String[0]);
+        } finally {
+            globalLock.unlock();
+        }
+    }
+    //This block will be used when we need to reset data in tables to null
+    private void overwriteBlocktoNull(int blockIndex) throws IOException {
+        long position = metadataBlocks * BLOCK_SIZE + (blockIndex - metadataBlocks) * BLOCK_SIZE;
+        disk.seek(position);
+        disk.write(new byte[BLOCK_SIZE]);
+        disk.getFD().sync();
+    }
+    private void writeMetadataToDisk() throws IOException {
+        disk.seek(0);
+
+        for (FEntry entry : inodeTable) {
+            if (entry != null) {
+                writeFEntry(entry);
+            } else {
+                disk.write(new byte[FENTRY_SIZE]);
+            }
+        }
+
+        for (FNode node : fNodeTable) {
+            disk.writeInt(node.getBlockIndex());
+            disk.writeInt(node.getNext());
+        }
+
+        disk.getFD().sync();
+    }
+    //this will write the file entries to the file system
+    private void writeFEntry(FEntry entry) throws IOException {
+        byte[] filenameBytes = entry.getFilename().getBytes();
+        disk.write(filenameBytes);
+        for (int i = filenameBytes.length; i < 11; i++) {
+            disk.writeByte(0);
+        }
+        disk.writeShort(entry.getFilesize());
+        disk.writeShort(entry.getFirstBlock());
+    }
+    //this function will then delete the desired files from our system after we give it the file name
+    public void deleteFile(String fileName) throws Exception {
+        globalLock.lock();
+        try {
+            FEntry targetEntry = null;
+            int filesystemEntryIndex = -1;
+
+            for (int i = 0; i < MAXFILES; i++) {
+                if (inodeTable[i] != null && inodeTable[i].getFilename().equals(fileName)) {
+                    targetEntry = inodeTable[i];
+                    filesystemEntryIndex = i;
+                    break;
+                }
+            }
+
+            if (targetEntry == null) {
+                throw new Exception("ERROR: file '" + fileName + "' does'nt exist");
+            }
+
+            short currentBlock = targetEntry.getFirstBlock();
+            while (currentBlock != -1) {
+                FNode currentNode = fNodeTable[currentBlock];
+                freeBlockList[currentBlock] = false;
+                overwriteBlocktoNull(currentBlock);
+                int nextBlock = currentNode.getNext();
+                fNodeTable[currentBlock] = new FNode(-1);
+                currentBlock = (short) nextBlock;
+            }
+
+            inodeTable[filesystemEntryIndex] = null;
+
+            writeMetadataToDisk();
+        } finally {
+            globalLock.unlock();
+        }
+    }
+    //this function will read the file from the saved data table list
+    public byte[] readFile(String fileName) throws Exception {
+        globalLock.lock();
+        try {
+            FEntry targetEntry = null;
+            for (FEntry entry : inodeTable) {
+                if (entry != null && entry.getFilename().equals(fileName)) {
+                    targetEntry = entry;
+                    break;
+                }
+            }
+
+            if (targetEntry == null) {
+                throw new Exception("ERROR: this file :'" + fileName + "' does'nt exist");
+            }
+
+            byte[] content = new byte[targetEntry.getFilesize()];
+            short currentBlock = targetEntry.getFirstBlock();
+            int readBytes = 0;
+            int blockIndex = 0;
+            while (currentBlock != -1 && readBytes < targetEntry.getFilesize()) {
+                long position = metadataBlocks * BLOCK_SIZE + (currentBlock - metadataBlocks) * BLOCK_SIZE;
+                disk.seek(position);
+
+                int bytesToRead = Math.min(BLOCK_SIZE, targetEntry.getFilesize() - readBytes);
+                disk.readFully(content, readBytes, bytesToRead);
+
+                readBytes += bytesToRead;
+
+                if (blockIndex < fNodeTable.length - 1) {
+                    currentBlock = (short) fNodeTable[currentBlock].getNext();
+                } else {
+                    currentBlock = -1;
+                }
+                blockIndex++;
+            }
+
+            return content;
         } finally {
             globalLock.unlock();
         }
