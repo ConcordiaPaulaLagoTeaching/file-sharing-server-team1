@@ -110,5 +110,92 @@ public class FileSystemManager {
         }
     }
 
-    // TODO: Add readFile, writeFile and other required methods,
+    public void writeFile(String fileName, String content) throws Exception {
+        // Validate filename
+        if (fileName == null || fileName.isEmpty()) {
+            throw new IllegalArgumentException("ERROR: Filename cannot be empty.");
+        }
+
+        // Validate content
+        if (content == null) {
+            throw new IllegalArgumentException("ERROR: Content cannot be null.");
+        }
+
+        globalLock.lock();
+        try {
+            // Find the file's inode in the inode table
+            int inodeIndex = -1;
+            for (int i = 0; i < MAXFILES; i++) {
+                if (inodeTable[i].isInUse() && inodeTable[i].getFilename().equals(fileName)) {
+                    inodeIndex = i;
+                    break;
+                }
+            }
+
+            // Check if file exists
+            if (inodeIndex == -1) {
+                throw new IllegalArgumentException("ERROR: File '" + fileName + "' not found.");
+            }
+
+            FEntry fileEntry = inodeTable[inodeIndex];
+            byte[] contentBytes = content.getBytes();
+            int contentSize = contentBytes.length;
+
+            // Calculate required number of blocks for the content
+            int requiredBlocks = (int) Math.ceil((double) contentSize / BLOCK_SIZE);
+
+            // Check if we have enough free blocks
+            int availableBlocks = 0;
+            for (int i = 0; i < MAXBLOCKS; i++) {
+                if (freeBlockList[i]) {
+                    availableBlocks++;
+                }
+            }
+
+            if (requiredBlocks > availableBlocks) {
+                throw new IllegalStateException(
+                        "ERROR: Insufficient disk space. Required: " + requiredBlocks + " blocks, Available: "
+                                + availableBlocks + " blocks.");
+            }
+
+            // Allocate free blocks and write content
+            int[] allocatedBlocks = new int[requiredBlocks];
+            int blockCount = 0;
+
+            // Find and allocate free blocks
+            for (int i = 0; i < MAXBLOCKS && blockCount < requiredBlocks; i++) {
+                if (freeBlockList[i]) {
+                    allocatedBlocks[blockCount] = i;
+                    freeBlockList[i] = false; // Mark block as used
+                    blockCount++;
+                }
+            }
+
+            // Write content to allocated blocks on disk
+            for (int i = 0; i < requiredBlocks; i++) {
+                int blockIndex = allocatedBlocks[i];
+                long blockOffset = (long) blockIndex * BLOCK_SIZE;
+
+                // Calculate how much content to write to this block
+                int startOffset = i * BLOCK_SIZE;
+                int bytesToWrite = Math.min(BLOCK_SIZE, contentSize - startOffset);
+
+                // Write content to disk at the calculated offset
+                disk.seek(blockOffset);
+                disk.write(contentBytes, startOffset, bytesToWrite);
+            }
+
+            // Update the inode with block pointers and file size
+            fileEntry.setFirstBlock((short) allocatedBlocks[0]);
+            fileEntry.setFilesize((short) contentSize);
+
+            System.out.println("File '" + fileName + "' written successfully with " + contentSize + " bytes across "
+                    + requiredBlocks + " block(s).");
+
+        } finally {
+            globalLock.unlock();
+        }
+    }
+
+    // TODO: Add readFile, deleteFile and other required methods,
 }

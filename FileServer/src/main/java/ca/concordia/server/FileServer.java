@@ -54,6 +54,30 @@ public class FileServer {
                                 }
                                 writer.flush();
                                 break;
+                            case "WRITE":
+                                try {
+                                    if (parts.length < 3) {
+                                        writer.println("ERROR: WRITE command requires a filename and content.");
+                                    } else {
+                                        // Join all parts after the filename as content (in case content has spaces)
+                                        StringBuilder contentBuilder = new StringBuilder();
+                                        for (int i = 2; i < parts.length; i++) {
+                                            if (i > 2) {
+                                                contentBuilder.append(" ");
+                                            }
+                                            contentBuilder.append(parts[i]);
+                                        }
+                                        String content = contentBuilder.toString();
+                                        fsManager.writeFile(parts[1], content);
+                                        writer.println("SUCCESS: Content written to file '" + parts[1] + "'.");
+                                    }
+                                } catch (IllegalArgumentException | IllegalStateException e) {
+                                    writer.println(e.getMessage());
+                                } catch (Exception e) {
+                                    writer.println("ERROR: Failed to write file: " + e.getMessage());
+                                }
+                                writer.flush();
+                                break;
                             // TODO: Implement other commands READ, WRITE, DELETE, LIST
                             case "QUIT":
                                 writer.println("SUCCESS: Disconnecting.");
